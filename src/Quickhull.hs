@@ -99,38 +99,140 @@ initialPartition points =
 -- These points are undecided.
 --
 partition :: Acc SegmentedPoints -> Acc SegmentedPoints
-partition (T2 headFlags points) =
-  error "TODO: partition"
+partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
+  where
+    --the lines for the given flags/points
+    lines flags = zip (propagateL flags points) ( propagateR flags points)
+    
+
+    distances :: Acc (Vector Int) --sets all the distances from the closest line
+    distances =  map (snd P.. fst) $ segmentedScanl1 setDistance headFlags (zip points $ lines headFlags) --(T2 headFlags points)
+      where 
+        setDistance :: Exp (Point, Line) -> Exp (Point, Line) -> Exp (Point, Line)
+        --r and i may be turned around
+        setDistance (T2 (T2  _ maxDistance) _) (T2 (T2 a b) aLine)  =  T2 ( T2 b (max distance maxDistance)) aLine
+          where distance = nonNormalizedDistance (lift aLine) $ lift (a, b)
+
+    --shifts the headflags back and forth to get the new flags in the correct place
+    -- ~boogie woogie~
+    newHeadFlags = shiftHeadFlagsR $ map snd $ segmentedScanr1 
+      (\(T2 prevDistance prevHeadFlag) (T2 currDistance currHeadFlag) -> 
+        if prevDistance > currDistance then T2 currDistance $ lift True else T2 currDistance currHeadFlag) (shiftHeadFlagsL headFlags) (zip distances $ shiftHeadFlagsL headFlags)
+    -- > used to be <
+
+    --all points have a corresponding relative index and a ?segmentnr?
+    --(relativeIndex, keepPointFlag, segmentScore)
+    flaggedRelativeIndex :: Acc (Vector (Int, Bool, Int))
+    flaggedRelativeIndex =
+      let
+          fill' :: Elt a => Exp a -> Acc (Vector a)
+          fill' = fill ( I1 $  length points)
+
+          leftRelativeIndex1 :: Acc (Vector (Int, Bool, Point))
+          leftRelativeIndex1 = 
+            map (\(T4 i f p l) -> (T3 i f p)) $ segmentedScanl1 (\(T4 lastIndex _ _ _) (T4 _ flag point line) -> 
+                          if pointIsLeftOfLine line point 
+                            then T4 (lift $ 1 + lastIndex) (lift True) point line 
+                            else T4 lastIndex flag point line) --ensures 
+            headFlags $ zip4 (fill' 0) headFlags points (propagateL (shiftHeadFlagsR headFlags) $ lines newHeadFlags) --Pn does not have have pn,pn as linesegment
+
+        --find, flag and index the newpoint
+        --((relativeindex, stayflag, point) highestIndex, line)
+          leftRelativeIndex2 :: Acc (Vector ((Int, Bool, Point), Int, Line))
+          leftRelativeIndex2 = 
+            segmentedScanr1 
+            (\(T3 _ highestIndex _) (T3 (T3 currIndex flag point) _ line) -> 
+                T3 (T3 (if point == fst line && flag == lift False then max (currIndex +1) highestIndex else currIndex) 
+                (if point == fst line then lift True else flag) point) 
+                (if currIndex > highestIndex then currIndex + 1 else highestIndex) line)
+            headFlags $ zip3 leftRelativeIndex1 ( fill' 0) (propagateR (shiftHeadFlagsL headFlags) $ lines newHeadFlags) --add new lines
+
+          --each segment needs to start one higher
+          --((index, stayflag, point) highestIndex, line)
+          rightRelativeIndex = 
+            let
+              pickRelativeIndex :: Exp ((Int, Bool, Point), Int, Line) -> Exp ((Int, Bool, Point), Int, Line) -> Exp ((Int, Bool, Point), Int, Line)
+              pickRelativeIndex (T3 _ prevHighestIndex _) (T3 (T3 currIndex flag point) currHighestIndex line) = 
+                  if flag == lift False && pointIsLeftOfLine line point 
+                    then  T3 (T3 (1 + highestIndex) (lift True) point) (1 + highestIndex) line
+                    else T3 (T3 currIndex flag point) highestIndex line 
+                where highestIndex = max prevHighestIndex currHighestIndex --should do nothing? could just be currHighest Index?
+            in
+            segmentedScanl1 pickRelativeIndex headFlags leftRelativeIndex2 
+          
+          --makes list of vectorscores that can be added to the relativeIndex to make the finalindex
+          segmentScore = map snd $ scanl1 
+            (\(T2 _ highestSegScore) (T2 flag highestRelativeIndex) -> if flag then T2 flag $ highestSegScore + highestRelativeIndex + 1 else T2 flag highestSegScore) 
+            $ zip headFlags $
+            propagateL headFlags (propagateL (shiftHeadFlagsL headFlags) 
+            $ map (\(T3 _ highestIndex _ ) -> highestIndex) rightRelativeIndex)
+
+      in
+      zip3 (map (\(T3 (T3 x _ _) _ _ ) -> x) rightRelativeIndex) (map (\(T3 (T3 _ x _) _ _ ) -> x) rightRelativeIndex) segmentScore
+
+    --turn the ralativeIndex into a proper index
+    flaggedTargetIndex :: Acc (Vector (Int, Bool))
+    flaggedTargetIndex = map (\(T3 relativeIndex keepPointFlag segmentScore) -> T2 (relativeIndex + segmentScore) keepPointFlag) flaggedRelativeIndex
+    
+    newLength = the $  maximum $ map fst flaggedTargetIndex
+
+    sortedSet :: Acc( Vector (Bool, Point))
+    sortedSet = permute 
+      (\a b -> a) --combination function
+      (fill (I1 (newLength))  $ T2 (lift False) (T2 0 0)) 
+    --index permutation function
+      (\currentIndex -> if snd (flaggedTargetIndex ! currentIndex) then lift $ Just (I1 $ fst (flaggedTargetIndex ! currentIndex)) else Nothing_ ) 
+      (zip newHeadFlags points) --source values (should be in correct order?)
 
 
 -- The completed algorithm repeatedly partitions the points until there are
 -- no undecided points remaining. What remains is the convex hull.
 --
 quickhull :: Acc (Vector Point) -> Acc (Vector Point)
-quickhull =
-  error "TODO: quickhull"
+quickhull input = init $ asnd $ awhile undecidedPoints partition (initialPartition input)
+  where 
+    undecidedPoints :: Acc SegmentedPoints -> Acc (Scalar Bool)
+    undecidedPoints (T2 headFlags points) = foldAll (\x y -> if y && x then lift False else lift True) (lift False) headFlags
 
 
 -- Helper functions
 -- ----------------
 
 propagateL :: Elt a => Acc (Vector Bool) -> Acc (Vector a) -> Acc (Vector a)
-propagateL = error "TODO: propagateL"
+propagateL flag val = map snd $ scanl1 newVal valueWithFlag
+  where
+    valueWithFlag = zip flag val
+    newVal :: Elt a => Exp (Bool, a) -> Exp (Bool, a) -> Exp (Bool, a)
+    newVal prev cur = ifThenElse (fst cur)  cur prev
 
 propagateR :: Elt a => Acc (Vector Bool) -> Acc (Vector a) -> Acc (Vector a)
-propagateR = error "TODO: propagateR"
+propagateR flag val = map snd $ scanr1 newVal valueWithFlag
+  where
+    valueWithFlag = zip flag val
+    newVal :: Elt a => Exp (Bool, a) -> Exp (Bool, a) -> Exp (Bool, a)
+    newVal cur prev = ifThenElse (fst cur)  cur prev
 
 shiftHeadFlagsL :: Acc (Vector Bool) -> Acc (Vector Bool)
-shiftHeadFlagsL = error "TODO: shiftHeadFlagsL"
+shiftHeadFlagsL vec = tail $ scanr (\curr prev -> curr) (lift True) vec
 
 shiftHeadFlagsR :: Acc (Vector Bool) -> Acc (Vector Bool)
-shiftHeadFlagsR = error "TODO: shiftHeadFlagsR"
+shiftHeadFlagsR vec = init $ scanl (\prev curr -> curr) (lift True) vec
 
 segmentedScanl1 :: Elt a => (Exp a -> Exp a -> Exp a) -> Acc (Vector Bool) -> Acc (Vector a) -> Acc (Vector a)
-segmentedScanl1 = error "TODO: segmentedScanl1"
+segmentedScanl1 func headFlags points = 
+  let 
+    zipped = zip headFlags points                   --zip the flags to the points
+    zippedAndScanned = scanl1 (segmented func) zipped    --scan using the function working only on segments
+    scanned = map snd zippedAndScanned                    --map snd over the zipped and scanned array, to return only the points
+  in scanned
 
 segmentedScanr1 :: Elt a => (Exp a -> Exp a -> Exp a) -> Acc (Vector Bool) -> Acc (Vector a) -> Acc (Vector a)
-segmentedScanr1 = error "TODO: segmentedScanr1"
+segmentedScanr1 func headFlags points = 
+  let 
+    zipped = zip headFlags points                --zip the flags to the points
+    zippedAndScanned = scanr1 (flip (segmented(flip func))) zipped   --scan using the function working only on segments
+    scanned = map snd zippedAndScanned                   --map snd over the zipped and scanned array, to return only the points
+  in scanned
 
 
 -- Given utility functions
