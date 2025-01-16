@@ -24,7 +24,7 @@ import Data.Array.Accelerate.Debug.Trace
 import qualified Prelude                      as P
 
 
--- Points and lines in two-dimensional space
+-- Points and correspondingLines in two-dimensional space
 --
 type Point = (Int, Int)
 type Line  = (Point, Point)
@@ -101,29 +101,35 @@ initialPartition points =
 partition :: Acc SegmentedPoints -> Acc SegmentedPoints
 partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
   where
-    --the lines for the given flags/points
-    lines flags = zip (propagateL flags points) ( propagateR flags points)
+    --creates a list of the line-segments the points in those spots belong to, based on the given list of flags
+    --the decided points just have the same point twice
+    --vb: [(p1,p1), (p1,p2), (p1,p2),(p1,p2), (p2,p2), (p2,p3), (p2,p3), (p3,p3), (p3,p1), (p3,p1), (p1,p1)]
+    -- :: Vector(Bool) -> vector(point,point)
+    correspondingLines flags = zip (propagateL flags points) ( propagateR flags points)
     
-
-    distances :: Acc (Vector Int) --sets all the distances from the closest line
-    distances =  map (snd P.. fst) $ segmentedScanl1 setDistance headFlags (zip points $ lines headFlags) --(T2 headFlags points)
+    --creates a list of the distance each point has from its closest line(based on the headflags)
+    distances :: Acc (Vector Int)
+    distances =  map (snd P.. fst) $ segmentedScanl1 setDistance headFlags (zip points $ correspondingLines headFlags) --(T2 headFlags points)
       where 
         setDistance :: Exp (Point, Line) -> Exp (Point, Line) -> Exp (Point, Line)
         --r and i may be turned around
         setDistance (T2 (T2  _ maxDistance) _) (T2 (T2 a b) aLine)  =  T2 ( T2 b (max distance maxDistance)) aLine
           where distance = nonNormalizedDistance (lift aLine) $ lift (a, b)
 
+    -- ??
     --shifts the headflags back and forth to get the new flags in the correct place
     -- ~boogie woogie~
     newHeadFlags = shiftHeadFlagsR $ map snd $ segmentedScanr1 
-      (\(T2 prevDistance prevHeadFlag) (T2 currDistance currHeadFlag) -> 
-        if prevDistance > currDistance then T2 currDistance $ lift True else T2 currDistance currHeadFlag) (shiftHeadFlagsL headFlags) (zip distances $ shiftHeadFlagsL headFlags)
-    -- > used to be <
+      (\ (T2 oldDistance _) (T2 currentDistance currentHeadFlag) -> 
+        if oldDistance > currentDistance --could be <
+          then T2 currentDistance $ lift True 
+          else T2 currentDistance currentHeadFlag) 
+      (shiftHeadFlagsL headFlags) (zip distances $ shiftHeadFlagsL headFlags)
 
     --all points have a corresponding relative index and a ?segmentnr?
     --(relativeIndex, keepPointFlag, segmentScore)
     flaggedRelativeIndex :: Acc (Vector (Int, Bool, Int))
-    flaggedRelativeIndex =
+    flaggedRelativeIndex = 
       let
           fill' :: Elt a => Exp a -> Acc (Vector a)
           fill' = fill ( I1 $  length points)
@@ -134,7 +140,7 @@ partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
                           if pointIsLeftOfLine line point 
                             then T4 (lift $ 1 + lastIndex) (lift True) point line 
                             else T4 lastIndex flag point line) --ensures 
-            headFlags $ zip4 (fill' 0) headFlags points (propagateL (shiftHeadFlagsR headFlags) $ lines newHeadFlags) --Pn does not have have pn,pn as linesegment
+            headFlags $ zip4 (fill' 0) headFlags points (propagateL (shiftHeadFlagsR headFlags) $ correspondingLines newHeadFlags) --Pn does not have have pn,pn as correspondingLinesegment
 
         --find, flag and index the newpoint
         --((relativeindex, stayflag, point) highestIndex, line)
@@ -145,7 +151,7 @@ partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
                 T3 (T3 (if point == fst line && flag == lift False then max (currIndex +1) highestIndex else currIndex) 
                 (if point == fst line then lift True else flag) point) 
                 (if currIndex > highestIndex then currIndex + 1 else highestIndex) line)
-            headFlags $ zip3 leftRelativeIndex1 ( fill' 0) (propagateR (shiftHeadFlagsL headFlags) $ lines newHeadFlags) --add new lines
+            headFlags $ zip3 leftRelativeIndex1 ( fill' 0) (propagateR (shiftHeadFlagsL headFlags) $ correspondingLines newHeadFlags) --add new correspondingLines
 
           --each segment needs to start one higher
           --((index, stayflag, point) highestIndex, line)
@@ -185,6 +191,12 @@ partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
       (zip newHeadFlags points) --source values (should be in correct order?)
 
 
+  
+  
+  
+  
+
+
 -- The completed algorithm repeatedly partitions the points until there are
 -- no undecided points remaining. What remains is the convex hull.
 --
@@ -199,40 +211,29 @@ quickhull input = init $ asnd $ awhile undecidedPoints partition (initialPartiti
 -- ----------------
 
 propagateL :: Elt a => Acc (Vector Bool) -> Acc (Vector a) -> Acc (Vector a)
-propagateL flag val = map snd $ scanl1 newVal valueWithFlag
+propagateL flag val = map snd $ scanl1 newVal $ zip flag val
   where
-    valueWithFlag = zip flag val
     newVal :: Elt a => Exp (Bool, a) -> Exp (Bool, a) -> Exp (Bool, a)
     newVal prev cur = ifThenElse (fst cur)  cur prev
 
 propagateR :: Elt a => Acc (Vector Bool) -> Acc (Vector a) -> Acc (Vector a)
-propagateR flag val = map snd $ scanr1 newVal valueWithFlag
+propagateR flag val = map snd $ scanr1 newVal $ zip flag val
   where
-    valueWithFlag = zip flag val
     newVal :: Elt a => Exp (Bool, a) -> Exp (Bool, a) -> Exp (Bool, a)
-    newVal cur prev = ifThenElse (fst cur)  cur prev
+    newVal cur = ifThenElse (fst cur)  cur
 
 shiftHeadFlagsL :: Acc (Vector Bool) -> Acc (Vector Bool)
-shiftHeadFlagsL vec = tail $ scanr (\curr prev -> curr) (lift True) vec
+shiftHeadFlagsL vec = tail $ scanr const (lift True) vec
 
 shiftHeadFlagsR :: Acc (Vector Bool) -> Acc (Vector Bool)
 shiftHeadFlagsR vec = init $ scanl (\prev curr -> curr) (lift True) vec
 
 segmentedScanl1 :: Elt a => (Exp a -> Exp a -> Exp a) -> Acc (Vector Bool) -> Acc (Vector a) -> Acc (Vector a)
-segmentedScanl1 func headFlags points = 
-  let 
-    zipped = zip headFlags points                   --zip the flags to the points
-    zippedAndScanned = scanl1 (segmented func) zipped    --scan using the function working only on segments
-    scanned = map snd zippedAndScanned                    --map snd over the zipped and scanned array, to return only the points
-  in scanned
+segmentedScanl1 f headFlags points = map snd $ scanl1 (segmented f) $ zip headFlags points           
 
 segmentedScanr1 :: Elt a => (Exp a -> Exp a -> Exp a) -> Acc (Vector Bool) -> Acc (Vector a) -> Acc (Vector a)
-segmentedScanr1 func headFlags points = 
-  let 
-    zipped = zip headFlags points                --zip the flags to the points
-    zippedAndScanned = scanr1 (flip (segmented(flip func))) zipped   --scan using the function working only on segments
-    scanned = map snd zippedAndScanned                   --map snd over the zipped and scanned array, to return only the points
-  in scanned
+segmentedScanr1 f headFlags points = map snd $ scanr1 (flip (segmented(flip f))) $ zip headFlags points
+  
 
 
 -- Given utility functions
