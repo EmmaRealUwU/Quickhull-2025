@@ -59,32 +59,46 @@ type SegmentedPoints = (Vector Bool, Vector Point)
 initialPartition :: Acc (Vector Point) -> Acc SegmentedPoints
 initialPartition points =
   let
-      p1, p2 :: Exp Point
-      p1 = error "TODO: locate the left-most point"
-      p2 = error "TODO: locate the right-most point"
+      p1, p2 :: Exp Point --finds the point with the largest and smallest x component
+      p1 = the $ fold1All (\point1 point2 -> if fst point1 < fst point2 then point1 else point2) points 
+      p2 = the $ fold1All (\point1 point2 -> if fst point1 > fst point2 then point1 else point2) points 
 
-      isUpper :: Acc (Vector Bool)
-      isUpper = error "TODO: determine which points lie above the line (p₁, p₂)"
+      isUpper :: Acc (Vector Bool) --maps whether points are left of p1 p2
+      isUpper = map (pointIsLeftOfLine (T2 p1 p2)) points
 
-      isLower :: Acc (Vector Bool)
-      isLower = error "TODO: determine which points lie below the line (p₁, p₂)"
+      isLower :: Acc (Vector Bool) --maps whether points are right of p1 p2 (== left of p2 p1)
+      isLower = map (pointIsLeftOfLine (T2 p2 p1)) points
 
       offsetUpper :: Acc (Vector Int)
       countUpper  :: Acc (Scalar Int)
-      T2 offsetUpper countUpper = error "TODO: number of points above the line and their relative index"
+      T2 offsetUpper countUpper = T2 relativeIndices summedLeft
+        where
+          flagsToNumbers = map (\x -> if x then 1 else 0) isUpper --sets the flags to one
+          relativeIndices = scanl1 (+) (-1) flagsToNumbers --sets first flag to 0, every next flag to +1
+          summedLeft = sum flagsToNumbers --counts all flags
+
 
       offsetLower :: Acc (Vector Int)
       countLower  :: Acc (Scalar Int)
-      T2 offsetLower countLower = error "TODO: number of points below the line and their relative index"
+      T2 offsetLower countLower = T2 relativeIndices summedRight
+        where
+          flagsToNumbers = map (\x -> if x then 1 else 0) isLower --sets the flags to one
+          relativeIndices = scanl1 (+) (-1) flagsToNumbers --sets first flag to 0, every next flag to +1
+          summedRight = sum flagsToNumbers --counts all flags
 
       destination :: Acc (Vector (Maybe DIM1))
-      destination = error "TODO: compute the index in the result array for each point (if it is present)"
+      destination = error "TODO: compute the index in the result array for each point (if it is present)" 
+        --checks if isupper or islower. if it is, set to Just offsetUpper + 1 or Just offsetLower + countUpper + 2
+        --or is p1 or is p2, set to Just 0 or Just countUpper
+        --else Nothing
 
       newPoints :: Acc (Vector Point)
       newPoints = error "TODO: place each point into its corresponding segment of the result"
+      --scatter using destination, over an array of size countupper + countlower + 3, default value p1
 
       headFlags :: Acc (Vector Bool)
       headFlags = error "TODO: create head flags array demarcating the initial segments"
+      -- map ==p1 || ==p2 on newPoints
   in
   T2 headFlags newPoints
 
