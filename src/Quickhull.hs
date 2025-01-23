@@ -77,7 +77,7 @@ initialPartition points =
           flagsToNumbers = map (\x -> if x then 1 else 0) isUpper
 
           relativeIndices :: Acc (Vector Int) --sets first flag to 1, every next flag to +1
-          relativeIndices = error "oops sorry" --scanl1 (+) flagsToNumbers
+          relativeIndices = scanl1 (+) flagsToNumbers
 
           summedLeft:: Acc (Scalar Int) --counts all flags
           summedLeft = sum flagsToNumbers 
@@ -91,7 +91,7 @@ initialPartition points =
           flagsToNumbers = map (\x -> if x then 1 else 0) isLower
 
           relativeIndices :: Acc (Vector Int) --sets first flag to 1, every next flag to +1
-          relativeIndices = error "oops sorry" --scanl1 (+) flagsToNumbers
+          relativeIndices = scanl1 (+) flagsToNumbers
 
           summedRight:: Acc (Scalar Int) --counts all flags
           summedRight = sum flagsToNumbers 
@@ -104,7 +104,7 @@ initialPartition points =
         --else Nothing
 
       newPoints :: Acc (Vector Point)
-      newPoints = error "Oops sorry" --permute const (fill (I1 ((sum countUpper ++ countLower) + 3)) p1) (destination!) points
+      newPoints = permute const (fill (I1 (the countUpper + the countLower + 3)) p1) (destination!) points
       --permute using \x -> index x of destination, over an array of size countupper + countlower + 3, default value p1
       --something like this, not sure about the typecheck for the arguments of fill
 
