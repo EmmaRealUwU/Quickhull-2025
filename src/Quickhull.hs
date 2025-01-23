@@ -76,8 +76,8 @@ initialPartition points =
           flagsToNumbers :: Acc (Vector Int) --sets the flags to one
           flagsToNumbers = map (\x -> if x then 1 else 0) isUpper
 
-          relativeIndices :: Acc (Vector Int) --sets first flag to 0, every next flag to +1
-          relativeIndices = scanl1 (+) (-1) flagsToNumbers
+          relativeIndices :: Acc (Vector Int) --sets first flag to 1, every next flag to +1
+          relativeIndices = error "oops sorry" --scanl1 (+) flagsToNumbers
 
           summedLeft:: Acc (Scalar Int) --counts all flags
           summedLeft = sum flagsToNumbers 
@@ -90,25 +90,26 @@ initialPartition points =
           flagsToNumbers :: Acc (Vector Int) --sets the flags to one
           flagsToNumbers = map (\x -> if x then 1 else 0) isLower
 
-          relativeIndices :: Acc (Vector Int) --sets first flag to 0, every next flag to +1
-          relativeIndices = scanl1 (+) (-1) flagsToNumbers
+          relativeIndices :: Acc (Vector Int) --sets first flag to 1, every next flag to +1
+          relativeIndices = error "oops sorry" --scanl1 (+) flagsToNumbers
 
           summedRight:: Acc (Scalar Int) --counts all flags
           summedRight = sum flagsToNumbers 
 
       destination :: Acc (Vector (Maybe DIM1))
       destination = error "TODO: compute the index in the result array for each point (if it is present)" 
-        --checks if isupper or islower. if it is, set to Just offsetUpper + 1 or Just offsetLower + countUpper + 2
+        --maps over points :
+        --checks if isupper or islower. if it is, set to Just offsetUpper or Just offsetLower + countUpper + 1
         --or is p1 or is p2, set to Just 0 (or Nothing!! also works with this implementation lol) or Just countUpper
         --else Nothing
 
       newPoints :: Acc (Vector Point)
-      newPoints = error "TODO: place each point into its corresponding segment of the result"
-      --scatter using \x -> index x of destination, over an array of size countupper + countlower + 3, default value p1
+      newPoints = error "Oops sorry" --permute const (fill (I1 ((sum countUpper ++ countLower) + 3)) p1) (destination!) points
+      --permute using \x -> index x of destination, over an array of size countupper + countlower + 3, default value p1
+      --something like this, not sure about the typecheck for the arguments of fill
 
-      headFlags :: Acc (Vector Bool)
-      headFlags = error "TODO: create head flags array demarcating the initial segments"
-      -- map ==p1 || ==p2 on newPoints
+      headFlags :: Acc (Vector Bool) --array where at each index with p1 or p2, there is a flag to indicate it
+      headFlags = map (\x -> x == p1 || x == p2) newPoints
   in
   T2 headFlags newPoints
 
