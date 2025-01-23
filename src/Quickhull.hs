@@ -100,15 +100,15 @@ initialPartition points =
       destination = imap toDestination points
         where
           toDestination :: Exp DIM1 -> Exp Point -> Exp (Maybe DIM1)
-          toDestination index point = ifThenElse (point == p1) (Just_ (constant (Z:. 0))) --p1 takes the first index in the resulting array
-                                      (ifThenElse (point == p2) (Just_ $ lift (Z:. the countUpper + 1)) --p2 takes the index right after the section of upper points in the resulting array
-                                      (ifThenElse (isUpper ! index) (Just_ $ lift (Z:. (offsetUpper ! index))) --upper points take the index that is the same as their offset
-                                      (ifThenElse (isLower ! index) (Just_ $ lift (Z:. (offsetLower ! index) + the countUpper + 1)) --lower points take the index equal to its offset after p2
+          toDestination index point = ifThenElse  (point == p1)     (Just_ $ constant $ Z:. 0) --p1 takes the first index in the resulting array
+                                      (ifThenElse (point == p2)     (Just_ $ lift $ Z:. the countUpper + 1) --p2 takes the index right after the section of upper points in the resulting array
+                                      (ifThenElse (isUpper ! index) (Just_ $ lift $ Z:. offsetUpper ! index) --upper points take the index that is the same as their offset
+                                      (ifThenElse (isLower ! index) (Just_ $ lift $ Z:. offsetLower ! index + the countUpper + 1) --lower points take the index equal to its offset after p2
                                       Nothing_ --if a point is not p1, p2, upper, or lower, then it must be on the line p1 p2 and thus has no place in the resulting array
                                       )))
 
       newPoints :: Acc (Vector Point)
-      newPoints = permute const (fill (I1 (the countUpper + the countLower + 3)) p1) (destination!) points
+      newPoints = permute const (fill (I1 $ the countUpper + the countLower + 3) p1) (destination!) points
       --permute using \x -> index x of destination, over an array of size countupper + countlower + 3, default value p1
 
       headFlags :: Acc (Vector Bool) --array where at each index with p1 or p2, there is a flag to indicate it
