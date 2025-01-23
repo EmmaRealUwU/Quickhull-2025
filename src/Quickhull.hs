@@ -60,8 +60,8 @@ initialPartition :: Acc (Vector Point) -> Acc SegmentedPoints
 initialPartition points =
   let
       p1, p2 :: Exp Point --finds the point with the largest and smallest x component
-      p1 = the $ fold1All (\point1 point2 -> if fst point1 < fst point2 then point1 else point2) points 
-      p2 = the $ fold1All (\point1 point2 -> if fst point1 > fst point2 then point1 else point2) points 
+      p1 = the $ fold1All (\point1 point2 -> if fst point1 < fst point2 then point1 else point2) points
+      p2 = the $ fold1All (\point1 point2 -> if fst point1 > fst point2 then point1 else point2) points
 
       isUpper :: Acc (Vector Bool) --maps whether points are left of p1 p2
       isUpper = map (pointIsLeftOfLine (T2 p1 p2)) points
@@ -80,7 +80,7 @@ initialPartition points =
           relativeIndices = scanl1 (+) flagsToNumbers
 
           summedLeft:: Acc (Scalar Int) --counts all flags
-          summedLeft = sum flagsToNumbers 
+          summedLeft = sum flagsToNumbers
 
 
       offsetLower :: Acc (Vector Int)
@@ -94,10 +94,10 @@ initialPartition points =
           relativeIndices = scanl1 (+) flagsToNumbers
 
           summedRight:: Acc (Scalar Int) --counts all flags
-          summedRight = sum flagsToNumbers 
+          summedRight = sum flagsToNumbers
 
       destination :: Acc (Vector (Maybe DIM1))
-      destination = error "TODO: compute the index in the result array for each point (if it is present)" 
+      destination = error "TODO: compute the index in the result array for each point (if it is present)"
         --maps over points :
         --checks if isupper or islower. if it is, set to Just offsetUpper or Just offsetLower + countUpper + 1
         --or is p1 or is p2, set to Just 0 (or Nothing!! also works with this implementation lol) or Just countUpper
@@ -167,21 +167,21 @@ partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
     --segmentScore) = the index of the headflag of the segment the point belongs to
     --the final index can be accieved by adding the relativeindex to the segmentscore
     flaggedRelativeIndex :: Acc (Vector (Int, Bool, Int))
-    flaggedRelativeIndex = zip3 (map (\(T3 (T3 x _ _) _ _ ) -> x) rightRelativeIndex) (map (\(T3 (T3 _ x _) _ _ ) -> x) rightRelativeIndex) segmentScore
+    flaggedRelativeIndex = zip3 (map (\(T3 (T3 x _ _) _ _ ) -> x) relativeIndexR) (map (\(T3 (T3 _ x _) _ _ ) -> x) relativeIndexR) segmentScore
       where
 
         --((relativeindex, stayflag, point) highestIndex, line)
         --relativeIndex starts at 1
-        leftRelativeIndex :: Acc (Vector ((Int, Bool, Point), Int, Line))
-        leftRelativeIndex =
+        relativeIndexNP :: Acc (Vector ((Int, Bool, Point), Int, Line))
+        relativeIndexNP =
           let
             --sets the relative-index of all the points left of the line between the newHullPoint and the point left of the newHullPoints
             --and flags these points as 'keepers'
             --newHullPoint gets skipped
-            leftRelativeIndex1 :: Acc (Vector (Int, Bool, Point))
-            leftRelativeIndex1 = map (\(T4 i f p _) -> T3 i f p) $ segmentedScanl1
+            relativeIndexL :: Acc (Vector (Int, Bool, Point))
+            relativeIndexL = map (\(T4 i f p _) -> T3 i f p) $ segmentedScanl1
               (\(T4 lastIndex _ _ _) (T4 _ flag point line) ->
-                if pointIsLeftOfLine line point
+                if flag == lift False && pointIsLeftOfLine line point
                   then T4 (lift $ 1 + lastIndex) (lift True) point line
                   else T4 lastIndex flag point line) --ensures the oldHullPoints stay at index 0 and get flagged true
               headFlags $ zip4 (fillEasy 0)  headFlags points leftLines
@@ -194,68 +194,62 @@ partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
           in
           --find, flag and index the newHullPoint as well
           --and give the highest index of each segment, oldHullPoints will have a highest index of 0
-          segmentedScanr1
-            (\(T3 _ highestIndex _) (T3 (T3 currIndex flag point) _ line) ->
-              T3
-                (T3
-                  (if point == fst line && flag == lift False --if the point is the newHullPoint, give it an index one higher than the highest index in that segment
-                    then max (currIndex +1) highestIndex
-                    else currIndex)
-                  (if point == fst line then lift True else flag)
-                  point)
-                (if currIndex > highestIndex then currIndex + 1 else highestIndex) --set the new highest index
-                line)
-          headFlags $ zip3 leftRelativeIndex1 (fillEasy 0) rightLines
+          segmentedScanr1 setIndex headFlags $ zip3 relativeIndexL (fillEasy 0) rightLines
           ----creates a list where every segment contains the line on the the right side of the newHullPoint
-          where rightLines = propagateR (shiftHeadFlagsL headFlags) $ correspondingLines newHeadFlags
+          where
+            setIndex :: Exp ((Int, Bool, Point), Int, Line) -> Exp ((Int, Bool, Point), Int, Line) -> Exp ((Int, Bool, Point), Int, Line)
+            setIndex (T3 _ prevHighestIndex _) (T3 (T3 currIndex flag point) _ line) =
+              if flag == lift False && point == fst line
+                then T3 (T3 (highestIndex + 1) (lift True) point) (highestIndex + 1) line
+                else T3 (T3 currIndex flag point) highestIndex line
+              where highestIndex = max prevHighestIndex currIndex
+            rightLines = propagateR (shiftHeadFlagsL headFlags) $ correspondingLines newHeadFlags
 
-          --each segment needs to start one higher
-          --((relativeIndex, stayflag, point) highestIndex, line)
-        rightRelativeIndex = segmentedScanl1 pickRelativeIndex headFlags leftRelativeIndex
+          --each segment needs to start one higher, no that happends in segmentedscan
+          -- :: ((relativeIndex, stayflag, point) highestIndex, line)
+        relativeIndexR = segmentedScanl1 pickRelativeIndex headFlags relativeIndexNP
           where
             --give the points left of the line a new index & flag, keep the others as-is
             pickRelativeIndex :: Exp ((Int, Bool, Point), Int, Line) -> Exp ((Int, Bool, Point), Int, Line) -> Exp ((Int, Bool, Point), Int, Line)
-            pickRelativeIndex (T3 _ prevHighestIndex _) (T3 (T3 currIndex flag point) currHighestIndex line) =
+            pickRelativeIndex (T3 _ prevHighestIndex _) (T3 (T3 currRelIndex flag point) currHighestIndex line) =
                 if flag == lift False && pointIsLeftOfLine line point
                   then  T3 (T3 (1 + highestIndex) (lift True) point) (1 + highestIndex) line
-                  else T3 (T3 currIndex flag point) highestIndex line
+                  else T3 (T3 currRelIndex flag point) highestIndex line
               where highestIndex = max prevHighestIndex currHighestIndex --should do nothing? could just be currHighest Index?
 
 
         --makes list of segmentscores that can be added to the relativeIndex to make the finalindex
-        --starts at 0?
+        --rightRelativeIndex's highestIndex should have at the end(rightmostside) of every section of false headflags the highest relativer index of that section
+        --the segmentscore starts with 0, and for every first True flag after a false section adds the highest relative index of that section to the segmentscore + 1 (because true flags have a relative index of 0)
+        --the true flags that comde directly after another true flag just ad one to the segmentscore
+        --and the false flags take the segmentscore of the previous flag, becaus ethey will add their relative index to that
+        --starts at 0
         segmentScore :: Acc (Vector Int)
         segmentScore = map (\(T3 _ _ s) -> s - 1) $ scanl1
           (\(T3 prevFlag prevHighestIndex prevSegmentScore) ( T3 currFlag highestIndex _) ->
             if currFlag then
-              if prevFlag then T3 currFlag highestIndex (prevSegmentScore + 1)
+              if prevFlag then T3 currFlag highestIndex (prevSegmentScore + 1) --probably also triggers for first flag?
               else T3 currFlag highestIndex (prevHighestIndex + prevSegmentScore + 1)
             else T3 currFlag highestIndex prevSegmentScore)
-          $ zip3 headFlags (map (\(T3 _ highestIndex _ ) -> highestIndex) rightRelativeIndex) (fillEasy 0)
-
-          --(\(T2 _ highestSegScore) (T2 flag highestRelativeIndex) -> 
-            --if flag -- && highestRelativeIndex > 0
-             -- then T2 flag $ highestSegScore + highestRelativeIndex + 1 
-             -- else T2 flag highestSegScore) 
-          -- $ zip headFlags $
-           -- init $ scanl (\prev curr -> curr) 0 (propagateL (shiftHeadFlagsL headFlags) -- puts the highest index of the previous segment in the next one
-             -- $ map (\(T3 _ highestIndex _ ) -> highestIndex) rightRelativeIndex) --take the list of highest indexes
+          $ zip3 headFlags (map (\(T3 _ highestIndex _ ) -> highestIndex ) relativeIndexR) (fillEasy 0)
 
 
     --turn the ralativeIndex into a proper index
     flaggedTargetIndex :: Acc (Vector (Int, Bool))
     flaggedTargetIndex = map (\(T3 relativeIndex keepPointFlag segmentScore) -> T2 (relativeIndex + segmentScore) keepPointFlag) flaggedRelativeIndex
 
-    newLength = the $  maximum $ map fst flaggedTargetIndex
+    -- add one cuz the index starts at 0
+    newLength = the (maximum $ map fst flaggedTargetIndex) + 1
 
     sortedSet :: Acc( Vector (Bool, Point))
     sortedSet = permute
-      (\a b -> a) --combination function
-      (fill (I1 (newLength))  $ T2 (lift False) (T2 0 0))
+      (\newVal defaultVal -> newVal) --combination function
+      (fill (I1 newLength)  $ T2 (lift False) (T2 0 0)) --target array of default values: False and (0,0)
     --index permutation function
-      (\currentIndex -> if snd (flaggedTargetIndex ! currentIndex) then lift $ Just (I1 $ fst (flaggedTargetIndex ! currentIndex)) else Nothing_ )
-      (zip newHeadFlags points) --source values (should be in correct order?)
-
+      (\currentIndex -> if snd (flaggedTargetIndex ! currentIndex) --check the keepFlag if this element will be in the result
+        then lift $ Just (I1 $ fst (flaggedTargetIndex ! currentIndex)) --take the targetIndex
+        else Nothing_ ) --or return nothing
+      (zip newHeadFlags points) --source values, make it tuples to keep the points and their (new) flags together
 
 
 
