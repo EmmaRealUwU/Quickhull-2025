@@ -237,12 +237,11 @@ partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
 
 -- The completed algorithm repeatedly partitions the points until there are
 -- no undecided points remaining. What remains is the convex hull.
---
 quickhull :: Acc (Vector Point) -> Acc (Vector Point)
 quickhull input = init $ asnd $ awhile undecidedPoints partition (initialPartition input)
   where
     undecidedPoints :: Acc SegmentedPoints -> Acc (Scalar Bool)
-    undecidedPoints (T2 headFlags points) = foldAll (\x y -> if y && x then lift False else lift True) (lift False) headFlags
+    undecidedPoints (T2 headFlags points) = any (\x -> x == lift False) headFlags
 
 
 -- Helper functions
