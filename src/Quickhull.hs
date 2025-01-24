@@ -60,8 +60,20 @@ initialPartition :: Acc (Vector Point) -> Acc SegmentedPoints
 initialPartition points =
   let
       p1, p2 :: Exp Point --finds the point with the largest and smallest x component
-      p1 = the $ fold1All (\point1 point2 -> if fst point1 <= fst point2 then point1 else point2) points 
-      p2 = the $ fold1All (\point1 point2 -> if fst point1 >= fst point2 then point1 else point2) points 
+      p1 = the $ fold1All --folds into a single point where
+          (\point1 point2 -> if fst point1 <= fst point2 then --if smaller, checks if the same size
+          (if fst point1 == fst point2 then --the same x, checks which has largest absolute y component
+          (if abs (snd point1) > abs (snd point2) then point1 else point2) --if first largest y, then first point else second
+          else point1) --if not same x, first point is smaller
+          else point2) --if first point not smaller, second point is smaller
+          points
+      p2 = the $ fold1All --folds into a single point where
+          (\point1 point2 -> if fst point1 >= fst point2 then --if larger, checks if the same size
+          (if fst point1 == fst point2 then --the same x, checks which has largest absolute y component
+          (if abs (snd point1) > abs (snd point2) then point1 else point2) --if first largest y, then first point else second
+          else point1) --if not same x, first point is larger
+          else point2) --if first point not larger, second point is larger
+          points
 
       isUpper :: Acc (Vector Bool) --maps whether points are left of p1 p2
       isUpper = map (pointIsLeftOfLine (T2 p1 p2)) points
@@ -80,7 +92,7 @@ initialPartition points =
           relativeIndices = scanl1 (+) flagsToNumbers
 
           summedLeft:: Acc (Scalar Int) --counts all flags
-          summedLeft = sum flagsToNumbers 
+          summedLeft = sum flagsToNumbers
 
 
       offsetLower :: Acc (Vector Int)
@@ -94,7 +106,7 @@ initialPartition points =
           relativeIndices = scanl1 (+) flagsToNumbers
 
           summedRight:: Acc (Scalar Int) --counts all flags
-          summedRight = sum flagsToNumbers 
+          summedRight = sum flagsToNumbers
 
       destination :: Acc (Vector (Maybe DIM1))
       destination = imap toDestination points
