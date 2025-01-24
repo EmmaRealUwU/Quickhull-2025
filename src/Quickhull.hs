@@ -43,18 +43,9 @@ type SegmentedPoints = (Vector Bool, Vector Point)
 
 -- Core implementation
 -- -------------------
+--made by Emma Kneijber & Saar van netburg
+-- 7757859 & 7515960
 
--- Initialise the algorithm by first partitioning the array into two
--- segments. Locate the left-most (p₁) and right-most (p₂) points. The
--- segment descriptor then consists of the point p₁, followed by all the
--- points above the line (p₁,p₂), followed by the point p₂, and finally all
--- of the points below the line (p₁,p₂).
---
--- To make the rest of the algorithm a bit easier, the point p₁ is again
--- placed at the end of the array.
---
--- We indicate some intermediate values that you might find beneficial to
--- compute.
 --
 initialPartition :: Acc (Vector Point) -> Acc SegmentedPoints
 initialPartition points =
@@ -174,16 +165,16 @@ partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
     --segmentScore) = the index of the headflag of the segment the point belongs to
     --the final index can be accieved by adding the relativeindex to the segmentscore
     flaggedRelativeIndices :: Acc (Vector (Int, Bool, Int))
-    flaggedRelativeIndices = zip3 (map (\(T3 (T3 x _ _) _ _ ) -> x) rightRelativeIndex) (map (\(T3 (T3 _ x _) _ _ ) -> x) rightRelativeIndex) segmentScore
+    flaggedRelativeIndices = zip3 (map (\(T3 (T3 x _ _) _ _ ) -> x) relativeIndices2) (map (\(T3 (T3 _ x _) _ _ ) -> x) relativeIndices2) segmentScore
       where
-        leftRelativeIndex :: Acc (Vector ((Int, Bool, Point), Int, Line)) --((relativeindex, stayflag, point) highestIndex, line)
-        leftRelativeIndex =
+        relativeIndices1 :: Acc (Vector ((Int, Bool, Point), Int, Line)) --((relativeindex, stayflag, point) highestIndex, line)
+        relativeIndices1 =
           let
             --sets the relative-index of all the points left of the line between the newHullPoint and the point left of the newHullPoints
             --and flags these points as 'keepers'
             --newHullPoint gets skipped
-            leftRelativeIndex1 :: Acc (Vector (Int, Bool, Point))
-            leftRelativeIndex1 = map (\(T4 i f p _) -> T3 i f p) $ segmentedScanl1
+            relativeIndicesL :: Acc (Vector (Int, Bool, Point))
+            relativeIndicesL = map (\(T4 i f p _) -> T3 i f p) $ segmentedScanl1
               (\(T4 lastIndex _ _ _) (T4 _ stayFlag point line) ->
                 if pointIsLeftOfLine line point
                   then T4 (1 + lastIndex) (lift True) point line
@@ -202,12 +193,12 @@ partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
               if point == fst line && stayFlag == lift False
                 then T3 (T3 (1 + max highestIndex currIndex) (lift True) point) (1 + max highestIndex currIndex) line
                 else T3 (T3 currIndex stayFlag point) (max highestIndex currIndex) line )
-          headFlags $ zip3 leftRelativeIndex1 (fillEasy 0) rightLines
+          headFlags $ zip3 relativeIndicesL (fillEasy 0) rightLines
           where
             rightLines = propagateR (shiftHeadFlagsL headFlags) $ correspondingLines newHeadFlags --creates a list where every segment contains the line on the the right side of the newHullPoint
 
-        rightRelativeIndex :: Acc (Vector ((Int, Bool, Point), Int, Line)) --((relativeIndex, stayflag, point) highestIndex, line)
-        rightRelativeIndex = segmentedScanl1 pickRelativeIndex headFlags leftRelativeIndex --give the points left of the line a new index & flag, keep the others as-is
+        relativeIndices2 :: Acc (Vector ((Int, Bool, Point), Int, Line)) --((relativeIndex, stayflag, point) highestIndex, line)
+        relativeIndices2 = segmentedScanl1 pickRelativeIndex headFlags relativeIndices1 --give the points left of the line a new index & flag, keep the others as-is
           where
             pickRelativeIndex :: Exp ((Int, Bool, Point), Int, Line) -> Exp ((Int, Bool, Point), Int, Line) -> Exp ((Int, Bool, Point), Int, Line)
             pickRelativeIndex (T3 _ prevHighestIndex _) (T3 (T3 currIndex flag point) currHighestIndex line) =
@@ -217,21 +208,21 @@ partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
               where highestIndex = max prevHighestIndex currHighestIndex
 
         segmentScore :: Acc (Vector Int) --makes list of segmentscores that can be added to the relativeIndex to make the finalindex
-        segmentScore = map (\(T3 _ _ s) -> s - 1) $ scanl1 --starts at 0
+        segmentScore = map (\(T3 _ _ s) -> s - 1 ) $ scanl1 --starts at 0
           (\(T3 prevFlag prevHighestIndex prevSegmentScore) ( T3 currFlag highestIndex _) ->
             if currFlag 
               then if prevFlag 
-                      then T3 currFlag highestIndex (prevSegmentScore + 1)
+                      then T3 currFlag highestIndex (prevSegmentScore + 1) --adds +1 to the first headflag, but it needs to start at 0 so we subtract 1 from the whole thing 
                       else T3 currFlag highestIndex (prevHighestIndex + prevSegmentScore + 1)
               else T3 currFlag highestIndex prevSegmentScore)
-          $ zip3 headFlags (map (\(T3 _ highestIndex _ ) -> highestIndex) rightRelativeIndex) (fillEasy 0)
+          $ zip3 headFlags (map (\(T3 _ highestIndex _ ) -> highestIndex) relativeIndices2) (fillEasy 0)
 
     --turn the ralativeIndex into a proper index
     flaggedTargetIndex :: Acc (Vector (Int, Bool))
     flaggedTargetIndex = map (\(T3 relativeIndex keepPointFlag segmentScore) -> T2 (relativeIndex + segmentScore) keepPointFlag) flaggedRelativeIndices
 
-    newLength :: Exp Int
-    newLength = the $  maximum $ map fst flaggedTargetIndex
+    newLength :: Exp Int -- adds one cuz the index starts at 0
+    newLength = the (  maximum $ map fst flaggedTargetIndex) + 1
 
     sortedSet :: Acc( Vector (Bool, Point))
     sortedSet = permute const (fill (I1 newLength)  $ T2 (lift False) (T2 0 0))
@@ -241,14 +232,7 @@ partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
       (zip newHeadFlags points) --source values
 
 
-
-
-
-
-
-
--- The completed algorithm repeatedly partitions the points until there are
--- no undecided points remaining. What remains is the convex hull.
+-- The completed algorithm repeatedly partitions the points until there are no undecided points remaining. What remains is the convex hull.
 quickhull :: Acc (Vector Point) -> Acc (Vector Point)
 quickhull input = init $ asnd $ awhile undecidedPoints partition (initialPartition input)
   where
