@@ -219,8 +219,8 @@ partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
         segmentScore :: Acc (Vector Int) --makes list of segmentscores that can be added to the relativeIndex to make the finalindex
         segmentScore = map (\(T3 _ _ s) -> s - 1) $ scanl1 --starts at 0
           (\(T3 prevFlag prevHighestIndex prevSegmentScore) ( T3 currFlag highestIndex _) ->
-            if currFlag 
-              then if prevFlag 
+            if currFlag
+              then if prevFlag
                       then T3 currFlag highestIndex (prevSegmentScore + 1)
                       else T3 currFlag highestIndex (prevHighestIndex + prevSegmentScore + 1)
               else T3 currFlag highestIndex prevSegmentScore)
@@ -231,7 +231,7 @@ partition (T2 headFlags points) = T2 (map fst sortedSet) (map snd sortedSet)
     flaggedTargetIndex = map (\(T3 relativeIndex keepPointFlag segmentScore) -> T2 (relativeIndex + segmentScore) keepPointFlag) flaggedRelativeIndices
 
     newLength :: Exp Int
-    newLength = the $  maximum $ map fst flaggedTargetIndex
+    newLength = the (maximum $ map fst flaggedTargetIndex) + 1
 
     sortedSet :: Acc( Vector (Bool, Point))
     sortedSet = permute const (fill (I1 newLength)  $ T2 (lift False) (T2 0 0))
@@ -253,7 +253,7 @@ quickhull :: Acc (Vector Point) -> Acc (Vector Point)
 quickhull input = init $ asnd $ awhile undecidedPoints partition (initialPartition input)
   where
     undecidedPoints :: Acc SegmentedPoints -> Acc (Scalar Bool)
-    undecidedPoints (T2 headFlags points) = any (\x -> x == lift False) headFlags
+    undecidedPoints (T2 headFlags _) = any (\x -> x == lift False) headFlags
 
 
 -- Helper functions
@@ -278,7 +278,7 @@ shiftHeadFlagsL :: Acc (Vector Bool) -> Acc (Vector Bool)
 shiftHeadFlagsL vec = tail $ scanr const (lift True) vec
 
 shiftHeadFlagsR :: Acc (Vector Bool) -> Acc (Vector Bool)
-shiftHeadFlagsR vec = init $ scanl (\prev curr -> curr) (lift True) vec
+shiftHeadFlagsR vec = init $ scanl (\_ curr -> curr) (lift True) vec
 
 --why is it like this, why does left mean two different things for different functions?
 --this is so stupid
