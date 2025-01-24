@@ -60,8 +60,8 @@ initialPartition :: Acc (Vector Point) -> Acc SegmentedPoints
 initialPartition points =
   let
       p1, p2 :: Exp Point --finds the point with the largest and smallest x component
-      p1 = the $ fold1All (\point1 point2 -> if fst point1 < fst point2 then point1 else point2) points
-      p2 = the $ fold1All (\point1 point2 -> if fst point1 > fst point2 then point1 else point2) points
+      p1 = the $ fold1All (\point1 point2 -> if fst point1 <= fst point2 then point1 else point2) points 
+      p2 = the $ fold1All (\point1 point2 -> if fst point1 >= fst point2 then point1 else point2) points 
 
       isUpper :: Acc (Vector Bool) --maps whether points are left of p1 p2
       isUpper = map (pointIsLeftOfLine (T2 p1 p2)) points
